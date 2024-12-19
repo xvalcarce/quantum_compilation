@@ -54,8 +54,8 @@ class QuantumCompilation(core.Env):
     def __init__(self):
         super().__init__()
 
-    def _init(self, key: PRNGKey) -> State:
-        return _init(key)
+    def _init(self, key: PRNGKey, max_target_depth=MAX_TARGET_DEPTH) -> State:
+        return _init(key, max_target_depth=max_target_depth)
 
     def _step(self, state: core.State, action: Array, key) -> State:
         assert isinstance(state, State)
@@ -77,9 +77,9 @@ class QuantumCompilation(core.Env):
     def num_players(self) -> int:
         return 1
 
-def _init(rng: PRNGKey) -> State:
+def _init(rng: PRNGKey, max_target_depth=MAX_TARGET_DEPTH) -> State:
     rng1, rng2 = jax.random.split(rng)
-    d = jax.random.randint(rng1, (1,), MIN_TARGET_DEPTH, MAX_TARGET_DEPTH+1)[0]
+    d = jax.random.randint(rng1, (1,), MIN_TARGET_DEPTH, max_target_depth+1)[0]
     # we generate MAX_TARGET_DEPTH gates, that's cause static array is needed by jit
     gates = random_circuit(d, rng2)
     u = jnp.eye(DIM, dtype=jnp.complex64)
@@ -137,7 +137,7 @@ def random_gate(legal_gates, rng: PRNGKey):
     return gate
 
 def random_circuit(d, rng: PRNGKey) -> Array:
-    circuit = jnp.zeros(MAX_TARGET_DEPTH, dtype=jnp.int32)
+    circuit = jnp.zeros(DEPTH, dtype=jnp.int32) #Could use MAX_TARGET_DEPTH, but hack to increase MAX_TARGET_DEPTH during learning
 
     def body_fn(i, state):
         circuit, rng = state
