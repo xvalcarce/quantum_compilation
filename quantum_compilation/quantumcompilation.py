@@ -25,12 +25,25 @@ DEPTH = config.getint('environment', 'max_depth')
 DD = jnp.int32(DEPTH)
 
 MAX_TARGET_DEPTH = config.getint('environment', 'max_target_depth')
+M_TARGET_DEPTH = MAX_TARGET_DEPTH
 MIN_TARGET_DEPTH = config.getint('environment', 'min_target_depth')
 FIDELTY = config.getfloat('environment', 'target_fidelity')
 
 FALSE = jnp.bool_(False)
 TRUE = jnp.bool_(True)
 ZERO = jnp.int32(0)
+
+if config.getboolean('environment', 'use_normal', fallback=False):
+    MEAN_TARGET_DEPTH = config.getint('environment', 'mean_target_depth')+1
+    M_TARGET_DEPTH = MEAN_TARGET_DEPTH
+    STD_DEPTH = config.getint('environment', 'std_depth')
+    def random_depth(key, m_target_depth=MEAN_TARGET_DEPTH):
+        depth = jnp.minimum(jnp.maximum(jnp.int32(m_target_depth+STD_DEPTH*jax.random.normal(key)), MIN_TARGET_DEPTH), MAX_TARGET_DEPTH)
+        return depth
+else:
+    def random_depth(key, m_target_depth=MAX_TARGET_DEPTH):
+        d = jax.random.randint(key, (1,), MIN_TARGET_DEPTH, m_target_depth+1)[0]
+        return d
 
 @dataclass
 class State(core.State):
@@ -54,8 +67,8 @@ class QuantumCompilation(core.Env):
     def __init__(self):
         super().__init__()
 
-    def _init(self, key: PRNGKey, max_target_depth=MAX_TARGET_DEPTH) -> State:
-        return _init(key, max_target_depth=max_target_depth)
+    def _init(self, key: PRNGKey, m_target_depth=M_TARGET_DEPTH) -> State:
+        return _init(key, m_target_depth=m_target_depth)
 
     def _step(self, state: core.State, action: Array, key) -> State:
         assert isinstance(state, State)
@@ -77,9 +90,9 @@ class QuantumCompilation(core.Env):
     def num_players(self) -> int:
         return 1
 
-def _init(rng: PRNGKey, max_target_depth=MAX_TARGET_DEPTH) -> State:
+def _init(rng: PRNGKey, m_target_depth=M_TARGET_DEPTH) -> State:
     rng1, rng2 = jax.random.split(rng)
-    d = jax.random.randint(rng1, (1,), MIN_TARGET_DEPTH, max_target_depth+1)[0]
+    d = random_depth(rng1, m_target_depth=m_target_depth)
     # we generate MAX_TARGET_DEPTH gates, that's cause static array is needed by jit
     gates = random_circuit(d, rng2)
     u = jnp.eye(DIM, dtype=jnp.complex64)
