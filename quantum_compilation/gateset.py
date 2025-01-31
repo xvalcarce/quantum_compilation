@@ -29,6 +29,39 @@ def generate_gate_all_to_all(gate_seq: List[str], n_qubits: int) -> tuple[Dict,L
                 k+=1
     return gate_names,jnp.stack(gates)
 
+def generate_gate_with_ancilla(gate_seq: List[str], n_qubits: int, n_ancilla: int) -> tuple[Dict, List]:
+    dim = 2**(n_qubits + n_ancilla)  # Total dimension including ancilla
+    gates = []
+    gate_names = {}
+    k = 0
+    for g in gate_seq:
+        # Control gates
+        if g[0] == 'C':
+            # Control gates can have the following configurations:
+            # 1. Control on qubits, target on ancilla
+            # 2. Control on ancilla, target on qubits
+            # 3. Control and target both on ancilla
+            for control in range(n_qubits + n_ancilla):
+                for target in range(n_qubits + n_ancilla):
+                    if control != target:
+                        # Ensure the valid configurations
+                        if (control < n_qubits and target >= n_qubits) or \
+                           (control >= n_qubits and target < n_qubits) or \
+                           (control >= n_qubits and target >= n_qubits):
+                            mat = qujax.get_params_to_unitarytensor_func([g], [[control, target]], [[]], n_qubits + n_ancilla)
+                            gates.append(mat().reshape(dim, dim).astype(jnp.complex64))
+                            gate_names[k] = f"{g}_({control}){target}"
+                            k += 1
+        # Single-qubit gates
+        else:
+            # Only applied to ancilla
+            for i in range(n_qubits, n_qubits + n_ancilla):
+                mat = qujax.get_params_to_unitarytensor_func([g], [[i]], [[]], n_qubits + n_ancilla)
+                gates.append(mat().reshape(dim, dim).astype(jnp.complex64))
+                gate_names[k] = f"{g}_{i}"
+                k += 1
+    return gate_names, jnp.stack(gates)
+
 def commutations(gates: List) -> Array:
     dim = gates[0].shape
     commute = []
@@ -64,6 +97,20 @@ def redundancies(gates: list) -> Array:
         for i in range(diff):
             c.append(c[-1])
     return jnp.array(redundant)
+
+def ancilla_first_redundant(gates: list, n_qubits: int, n_ancilla: int) -> Array:
+    dim = int(2**(n_qubits+n_ancilla))
+    dim_obs = int(2**n_qubits)
+    ii = jnp.eye(dim_obs, dtype=jnp.complex64)
+    redudant = []
+    for gate in gates:
+        g = jax.lax.slice(gate, (0,0), (dim, dim), (2*n_ancilla,2*n_ancilla))
+        if jnp.all(g == ii):
+            redudant.append(True)
+        else:
+            redudant.append(False)
+    return jnp.array(redudant)
+
 
 def is_redundant(gate, circuit: Array, len_circuit,  commutation: Array, redundancy: Array) -> bool:
     i = len_circuit-1
