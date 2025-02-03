@@ -236,7 +236,7 @@ def random_circuit_ancilla(d, rng: PRNGKey) -> Array:
         u = jax.lax.fori_loop(0, d, lambda i,u: jnp.matmul(GATES[circuit[i]],u), u)     
         u = jax.lax.slice(u, (0,0), (DIM,DIM), (TWO_ANCILLA,TWO_ANCILLA))
         # avoid trivial unitary
-        is_trivial = jnp.allclose(u*jnp.linalg.norm(u, ord=2), EYE_DIM_OBS, atol=1e-3)
+        is_trivial = jnp.allclose(u/jnp.linalg.norm(u, ord=2), EYE_DIM_OBS, atol=1e-3)
         uu = jnp.matmul(u.conjugate().transpose(),u)
         r = uu.trace()/DIM_OBS
         # make sure produced target is a unitary
