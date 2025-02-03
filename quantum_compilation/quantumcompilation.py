@@ -18,7 +18,7 @@ HAS_ANCILLA = N_ANCILLA > 0
 TWO_ANCILLA = max(2*N_ANCILLA,1) #1 is a fallback for non ancillary slicing, a bithackysorry
 DIM = 2**(N_QUBITS+N_ANCILLA) #total number of qubits, including ancilla
 DIM_OBS = 2**N_QUBITS # observe dimension, i.e. final unitary space after measured ancilla
-FID_RENORM = DIM**2
+FID_RENORM = DIM_OBS**2
 EYE_DIM_OBS = jnp.eye(DIM_OBS, dtype=jnp.complex64)
 _gset = config['environment']['gateset'].split(',')
 GATESET = [gate.strip() for gate in _gset]
@@ -68,7 +68,6 @@ class State(core.State):
     _step_count: Array = jnp.int32(0)
     _circuit_unitary: Array = jnp.eye(DIM, dtype=jnp.complex64).ravel()
     _target_unitary: Array = jnp.eye(DIM_OBS, dtype=jnp.complex64).ravel()
-    _renormalization: Array = jnp.float32(0.0)
     _circuit: Array = jnp.zeros(DEPTH, dtype=jnp.int32)
     _target_circuit: Array = jnp.int32([])
     _target_depth: Array = jnp.int32(0)
@@ -114,12 +113,11 @@ def _init(rng: PRNGKey, m_target_depth=M_TARGET_DEPTH) -> State:
     v = jax.lax.fori_loop(0, d, lambda i,v: jnp.matmul(GATES[gates[i]],v), v) 
     # This performs identity if N_ANCILLA == 0, else slice |0> in, |0> out on ancillaes
     v = jax.lax.slice(v, (0,0), (DIM,DIM), (TWO_ANCILLA,TWO_ANCILLA))
-    # we store the renormalization factor instead of v =/ r, to enhance precision
-    r = jnp.linalg.norm(v) 
+    # renormalize
+    v = v/jnp.linalg.norm(v, ord=2) 
     return State(_target_unitary = v.conjugate().transpose(),
                  _target_circuit = gates,
                  _target_depth = d,
-                 _renormalization = r,
                  legal_action_mask = _legal_action_mask(gates,0)) # for ancilla case, not trivial 
 
 def _step(state: State, action, key):
@@ -132,7 +130,7 @@ def _step(state: State, action, key):
     # generate new action mask
     legal_action_mask = _legal_action_mask(c, state._step_count)
     # compute the reward/terminated
-    rewards, terminated = _reward(u,state._target_unitary,state._renormalization)
+    rewards, terminated = _reward(u,state._target_unitary)
     reached_target_depth = state._step_count >= state._target_depth
     reached_max_depth = state._step_count >= DEPTH
     #TODO: make sure this is compatible with penalty
@@ -165,32 +163,31 @@ def _legal_action_mask(circuit: Array, len_circuit):
                          circuit)
 
 if HAS_ANCILLA:
-    def _reward(u: Array, vt: Array, rvt = 1.0):
+    def _reward(u: Array, vt: Array):
         #TODO: implement penalty for depth and/or certain gate type
         # slice for |0>, |0>
         u = jax.lax.slice(u, (0,0), (DIM,DIM), (TWO_ANCILLA,TWO_ANCILLA))
         # renormalization factor
-        r = jnp.linalg.norm(u)
+        r = jnp.linalg.norm(u, ord=2)
         uvt = jnp.matmul(u,vt)
-        fid = jnp.square(jnp.abs(uvt.trace()/(r*rvt)))
-        r = fid > FIDELTY
-        return jnp.float32([r]), r
+        fid = jnp.square(jnp.abs(uvt.trace()/r))/FID_RENORM
+        f = fid > FIDELTY
+        return jnp.float32([f]), f
 else:
-    def _reward(u: Array, vt: Array, rvt = 1.0):
+    def _reward(u: Array, vt: Array):
         # hacky but here rvt is just the normalization of the fidelity
         #TODO: implement penalty for depth and/or certain gate type
         uvt = jnp.matmul(u,vt)
         fid = jnp.square(jnp.abs(uvt.trace()))/FID_RENORM
-        r = fid > FIDELTY
-        return jnp.float32([r]), r
+        f = fid > FIDELTY
+        return jnp.float32([f]), f
 
 if HAS_ANCILLA: 
     def _observe(state: State, player_id) -> Array:
         u = state._circuit_unitary.reshape(DIM,DIM)
         u = jax.lax.slice(u, (0,0), (DIM,DIM), (TWO_ANCILLA,TWO_ANCILLA))
         uvt = jnp.matmul(u,state._target_unitary)
-        r = jnp.round(DIM_OBS/(jnp.linalg.norm(u)*state._renormalization),decimals=4)
-        obs = uvt*r
+        obs = uvt/jnp.linalg.norm(u, ord=2)
         obs = jnp.append(obs.real.ravel(), obs.imag.ravel())
         return obs.reshape((2,DIM_OBS,DIM_OBS))
 else:
@@ -238,10 +235,13 @@ def random_circuit_ancilla(d, rng: PRNGKey) -> Array:
         u = jnp.eye(DIM, dtype=jnp.complex64)
         u = jax.lax.fori_loop(0, d, lambda i,u: jnp.matmul(GATES[circuit[i]],u), u)     
         u = jax.lax.slice(u, (0,0), (DIM,DIM), (TWO_ANCILLA,TWO_ANCILLA))
+        # avoid trivial unitary
+        is_trivial = jnp.allclose(u*jnp.linalg.norm(u, ord=2), EYE_DIM_OBS, atol=1e-3)
         uu = jnp.matmul(u.conjugate().transpose(),u)
         r = uu.trace()/DIM_OBS
+        # make sure produced target is a unitary
         is_u = jnp.allclose(uu/r, EYE_DIM_OBS, atol=1e-3)
-        return ~is_u
+        return ~(is_u*~is_trivial)
 
     def body_fn(state):
         circuit, rng = state
