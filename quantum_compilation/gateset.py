@@ -51,17 +51,30 @@ def generate_gate_with_ancilla(gate_seq: List[str], n_qubits: int, n_ancilla: in
             # 1. Control on qubits, target on ancilla
             # 2. Control on ancilla, target on qubits
             # 3. Control and target both on ancilla
-            for control in range(n_qubits + n_ancilla):
-                for target in range(n_qubits + n_ancilla):
-                    if control != target:
-                        # Ensure the valid configurations
-                        if (control < n_qubits and target >= n_qubits) or \
-                           (control >= n_qubits and target < n_qubits) or \
-                           (control >= n_qubits and target >= n_qubits):
-                            mat = qujax.get_params_to_unitarytensor_func([g], [[control, target]], [[]], n_qubits + n_ancilla)
-                            gates.append(mat().reshape(dim, dim).astype(jnp.complex64))
-                            gate_names[k] = f"{g}_({control}){target}"
-                            k += 1
+            if g[1] == 'C':
+                for control_1 in range(n_qubits + n_ancilla):
+                    for control_2 in range(control_1+1,n_qubits + n_ancilla):
+                        for target in range(n_qubits + n_ancilla):
+                            if control_1 != target and control_2 != target:
+                                # Ensure the valid configurations: not everything on qubits, one part on ancilla at least
+                                if (control_1 >= n_qubits) or \
+                                   (control_2 >= n_qubits) or \
+                                   (target >= n_qubits):
+                                    mat = qujax.get_params_to_unitarytensor_func([g], [[control_1, control_2, target]], [[]], n_qubits + n_ancilla)
+                                    gates.append(mat().reshape(dim, dim).astype(jnp.complex64))
+                                    gate_names[k] = f"{g}_({control_1,control_2}){target}"
+                                    k += 1
+            else:
+                for control in range(n_qubits + n_ancilla):
+                    for target in range(n_qubits + n_ancilla):
+                        if control != target:
+                            # Ensure the valid configurations
+                            if (control >= n_qubits) or \
+                                (target >= n_qubits):
+                                mat = qujax.get_params_to_unitarytensor_func([g], [[control, target]], [[]], n_qubits + n_ancilla)
+                                gates.append(mat().reshape(dim, dim).astype(jnp.complex64))
+                                gate_names[k] = f"{g}_({control}){target}"
+                                k += 1
         # Single-qubit gates
         else:
             # Only applied to ancilla
