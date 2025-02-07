@@ -13,13 +13,23 @@ def generate_gate_all_to_all(gate_seq: List[str], n_qubits: int) -> tuple[Dict,L
     for g in gate_seq:
         # control gates
         if g[0] == 'C':
-            for i in range(n_qubits):
-                for j in range(n_qubits):
-                    if i!=j:
-                        mat = qujax.get_params_to_unitarytensor_func([g],[[i,j]],[[]],n_qubits)
-                        gates.append(mat().reshape(dim,dim).astype(jnp.complex64))
-                        gate_names[k] = f"{g}_({i}){j}"
-                        k+=1
+            if g[1] == 'C':
+                for i in range(n_qubits):
+                    for j in range(i+1,n_qubits):
+                        for l in range(n_qubits):
+                            if i!=l and j!=l:
+                                mat = qujax.get_params_to_unitarytensor_func([g],[[i,j,l]],[[]],n_qubits)
+                                gates.append(mat().reshape(dim,dim).astype(jnp.complex64))
+                                gate_names[k] = f"{g}_({i},{j}){l}"
+                                k+=1
+            else:
+                for i in range(n_qubits):
+                    for j in range(n_qubits):
+                        if i!=j:
+                            mat = qujax.get_params_to_unitarytensor_func([g],[[i,j]],[[]],n_qubits)
+                            gates.append(mat().reshape(dim,dim).astype(jnp.complex64))
+                            gate_names[k] = f"{g}_({i}){j}"
+                            k+=1
         # single gates
         else:
             for i in range(n_qubits):
