@@ -120,6 +120,16 @@ def _init(rng: PRNGKey, m_target_depth=M_TARGET_DEPTH) -> State:
                  _target_depth = d,
                  legal_action_mask = _legal_action_mask(gates,0)) # for ancilla case, not trivial 
 
+def _init_u(u: Array, target_depth: int) -> State:
+    # max target_depth before game stops
+    d = jnp.array(target_depth, dtype=jnp.int32)
+    # dummy circuit
+    gates = jnp.zeros(target_depth, dtype=jnp.int32)
+    return State(_target_unitary = u.conjugate().transpose(),
+                 _target_circuit = gates,
+                 _target_depth = d,
+                 legal_action_mask = _legal_action_mask(gates,0)) # for ancilla case, not trivial 
+
 def _step(state: State, action, key):
     # reshape unitary to matrix
     u = state._circuit_unitary.reshape(DIM,DIM)
@@ -214,7 +224,7 @@ def random_gate(legal_gates, rng: PRNGKey):
 
 @jax.jit
 def random_circuit(d, rng: PRNGKey) -> Array:
-    circuit = jnp.zeros(DEPTH, dtype=jnp.int32) #Could use MAX_TARGET_DEPTH, but hack to increase MAX_TARGET_DEPTH during learning
+    circuit = jnp.zeros(DEPTH, dtype=jnp.int32) #could use max_target_depth, but hack to increase max_target_depth during learning
 
     def body_fn(i, state):
         circuit, rng = state
