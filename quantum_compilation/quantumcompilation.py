@@ -5,57 +5,8 @@ import pgx.core as core
 from pgx._src.struct import dataclass
 from pgx._src.types import Array, PRNGKey
 
-from typing import NamedTuple, Optional
-
-from quantum_compilation.gateset import generate_gate_all_to_all, generate_gate_with_ancilla
-from quantum_compilation.gateset import commutations, redundancies, is_redundant, ancilla_first_redundant
-
-from . import config
-
-N_QUBITS = config.getint('environment','n_qubits')
-N_ANCILLA = config.getint('environment','n_ancilla', fallback=0)
-HAS_ANCILLA = N_ANCILLA > 0
-TWO_ANCILLA = max(2*N_ANCILLA,1) #1 is a fallback for non ancillary slicing, a bithackysorry
-DIM = 2**(N_QUBITS+N_ANCILLA) #total number of qubits, including ancilla
-DIM_OBS = 2**N_QUBITS # observe dimension, i.e. final unitary space after measured ancilla
-FID_RENORM = DIM_OBS**2
-EYE_DIM_OBS = jnp.eye(DIM_OBS, dtype=jnp.complex64)
-_gset = config['environment']['gateset'].split(',')
-GATESET = [gate.strip() for gate in _gset]
-
-if HAS_ANCILLA:
-    GATE_NAMES, GATES = generate_gate_with_ancilla(GATESET, N_QUBITS, N_ANCILLA)
-    ANCILLA_REDUDANCIES = ~ancilla_first_redundant(GATES, N_QUBITS, N_ANCILLA)
-else:
-    GATE_NAMES, GATES = generate_gate_all_to_all(GATESET, N_QUBITS)
-
-COMMUTATIONS = commutations(GATES)
-REDUNDANCIES = redundancies(GATES)
-LENGTH_GATES = jnp.int32(len(GATES))
-GATES_NUM = jnp.arange(LENGTH_GATES)
-DEPTH = config.getint('environment', 'max_depth')
-DD = jnp.int32(DEPTH)
-
-MAX_TARGET_DEPTH = config.getint('environment', 'max_target_depth')
-M_TARGET_DEPTH = MAX_TARGET_DEPTH
-MIN_TARGET_DEPTH = config.getint('environment', 'min_target_depth')
-FIDELTY = config.getfloat('environment', 'target_fidelity')
-
-FALSE = jnp.bool_(False)
-TRUE = jnp.bool_(True)
-ZERO = jnp.int32(0)
-
-if config.getboolean('environment', 'use_normal', fallback=False):
-    MEAN_TARGET_DEPTH = config.getint('environment', 'mean_target_depth')+1
-    M_TARGET_DEPTH = MEAN_TARGET_DEPTH
-    STD_DEPTH = config.getint('environment', 'std_depth')
-    def random_depth(key, m_target_depth=MEAN_TARGET_DEPTH):
-        depth = jnp.minimum(jnp.maximum(jnp.int32(m_target_depth+STD_DEPTH*jax.random.normal(key)), MIN_TARGET_DEPTH), MAX_TARGET_DEPTH)
-        return depth
-else:
-    def random_depth(key, m_target_depth=MAX_TARGET_DEPTH):
-        d = jax.random.randint(key, (1,), MIN_TARGET_DEPTH, m_target_depth+1)[0]
-        return d
+from quantum_compilation.config import DIM, DIM_OBS, TWO_ANCILLA, LENGTH_GATES, DEPTH, M_TARGET_DEPTH, GATES, GATES_NUM, GATE_NAMES, FALSE, EYE_DIM_OBS, COMMUTATIONS, REDUNDANCIES, HAS_ANCILLA, ANCILLA_REDUDANCIES, FID_RENORM, FIDELITY, random_depth
+from quantum_compilation.utils import is_redundant
 
 @dataclass
 class State(core.State):
@@ -146,7 +97,7 @@ def _step(state: State, action, key):
     #TODO: make sure this is compatible with penalty
     terminated = jnp.logical_or(terminated, reached_target_depth)
     terminated = jnp.logical_or(terminated, reached_max_depth)
-    return state.replace( #type: ignore
+    return state.replace(
             _circuit_unitary = u.ravel(),
             _circuit = c,
             rewards = rewards, 
@@ -181,7 +132,7 @@ if HAS_ANCILLA:
         r = jnp.linalg.norm(u, ord=2)
         uvt = jnp.matmul(u,vt)
         fid = jnp.square(jnp.abs(uvt.trace()/r))/FID_RENORM
-        f = fid > FIDELTY
+        f = fid > FIDELITY
         return jnp.float32([f]), f
 else:
     def _reward(u: Array, vt: Array):
@@ -189,7 +140,7 @@ else:
         #TODO: implement penalty for depth and/or certain gate type
         uvt = jnp.matmul(u,vt)
         fid = jnp.square(jnp.abs(uvt.trace()))/FID_RENORM
-        f = fid > FIDELTY
+        f = fid > FIDELITY
         return jnp.float32([f]), f
 
 if HAS_ANCILLA: 

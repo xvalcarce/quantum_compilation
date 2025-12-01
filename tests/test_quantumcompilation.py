@@ -1,8 +1,10 @@
-from quantum_compilation.quantumcompilation import QuantumCompilation
-from quantum_compilation.quantumcompilation import DIM, DIM_OBS, GATES, DEPTH, MAX_TARGET_DEPTH, HAS_ANCILLA
-import quantum_compilation.quantumcompilation as qc
 import jax
 import jax.numpy as jnp
+
+import quantum_compilation.quantumcompilation as qc
+
+from quantum_compilation.quantumcompilation import QuantumCompilation
+from quantum_compilation.config import DIM, DIM_OBS, GATES, DEPTH, MAX_TARGET_DEPTH, HAS_ANCILLA, N_ANCILLA, TWO_ANCILLA
 
 env = QuantumCompilation()
 init = jax.jit(env.init)
@@ -10,7 +12,6 @@ step = jax.jit(env.step)
 observe = jax.jit(env.observe)
 
 identity = jnp.eye(DIM_OBS, dtype=jnp.complex64)
-ancilla_slice = max(2*qc.N_ANCILLA,1)
 
 key = jax.random.PRNGKey(420)
 
@@ -18,7 +19,7 @@ def test_init(key=key):
     state = init(key=key)
     # circuit unitary starts at identity
     u = state._circuit_unitary.reshape(DIM,DIM)
-    u = jax.lax.slice(u, (0,0), (DIM, DIM), (ancilla_slice,ancilla_slice))
+    u = jax.lax.slice(u, (0,0), (DIM, DIM), (TWO_ANCILLA,TWO_ANCILLA))
     assert jnp.allclose(u, identity, atol=1e-3)
     # target unitary is a unitary
     vt = state._target_unitary
