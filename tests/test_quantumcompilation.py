@@ -4,7 +4,10 @@ import jax.numpy as jnp
 import quantum_compilation.quantumcompilation as qc
 
 from quantum_compilation.quantumcompilation import QuantumCompilation
-from quantum_compilation.config import DIM, DIM_OBS, GATES, DEPTH, MAX_TARGET_DEPTH, HAS_ANCILLA, N_ANCILLA, TWO_ANCILLA
+from quantum_compilation.config import DIM, DIM_OBS, GATES, DEPTH, MAX_TARGET_DEPTH, HAS_ANCILLA, N_ANCILLA, TWO_ANCILLA, ANCILLA_INIT
+
+if N_ANCILLA > 0 and ANCILLA_INIT != '0':
+    print("Tests will fail : they are intended for ancilla initialization in |0>")
 
 env = QuantumCompilation()
 init = jax.jit(env.init)

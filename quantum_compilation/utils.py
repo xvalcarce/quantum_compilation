@@ -50,19 +50,20 @@ def redundancies(gates: list) -> Array:
             c.append(c[-1])
     return jnp.array(redundant)
 
-def ancilla_first_redundant(gates: list, n_qubits: int, n_ancilla: int) -> Array:
+def ancilla_first_redundant(init_state: Array, gates: list, n_qubits: int, n_ancilla: int) -> Array:
     """
     List of gates that are trivial when applied to the ancillaes, e.g. T on |0>.
     """
     if n_ancilla == 0:
         return jnp.array([],dtype=jnp.bool)
-    dim = int(2**(n_qubits+n_ancilla))
-    dim_obs = int(2**n_qubits)
+    dim = int(1<<(n_qubits+n_ancilla))
+    dim_obs = int(1<<n_qubits)
     ii = jnp.eye(dim_obs, dtype=jnp.complex64)
     redudant = []
     for gate in gates:
-        g = jax.lax.slice(gate, (0,0), (dim, dim), (2*n_ancilla,2*n_ancilla))
-        if jnp.all(g == ii):
+        u = jnp.matmul(gate,init_state)
+        u = jax.lax.slice(gate, (0,0), (dim, dim), (2*n_ancilla,2*n_ancilla))
+        if jnp.all(u == ii):
             redudant.append(True)
         else:
             redudant.append(False)

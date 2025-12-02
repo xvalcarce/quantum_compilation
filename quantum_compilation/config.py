@@ -1,4 +1,5 @@
 import jax
+import qujax
 import jax.numpy as jnp
 
 from quantum_compilation.gateset import load_connectivity, generate_gateset
@@ -12,16 +13,27 @@ def check_connectivity(connectivity, n_qubits, n_anilla):
 
 N_QUBITS = config.getint('environment','n_qubits')
 N_ANCILLA = config.getint('environment','n_ancilla', fallback=0)
+N_ALL = N_QUBITS+N_ANCILLA
 HAS_ANCILLA = N_ANCILLA > 0
 TWO_ANCILLA = max(2*N_ANCILLA,1) #1 is a fallback for non ancillary slicing, a bithackysorry
+ANCILLA_INIT = config.get('environment', 'ancilla_init', fallback='0')
 # Total dim, including ancilla
-DIM = 2**(N_QUBITS+N_ANCILLA) #total number of qubits, including ancilla
+DIM = 1<<N_ALL #total number of qubits, including ancilla
 # Dim w/o ancilla
-DIM_OBS = 2**N_QUBITS # observe dimension, i.e. final unitary space after measured ancilla
+DIM_OBS = 1<<N_QUBITS # observe dimension, i.e. final unitary space after measured ancilla
 # Renormalization factor for fidelity
 FID_RENORM = DIM_OBS**2
 # Identity matrix w/o ancilla
 EYE_DIM_OBS = jnp.eye(DIM_OBS, dtype=jnp.complex64)
+# Empty circuit
+EYE = jnp.eye(DIM,dtype=jnp.complex64)
+if ANCILLA_INIT in ['+','T']:
+    for i in range(N_QUBITS,N_ALL):
+        mat_ = qujax.get_params_to_unitarytensor_func(['H'],[[i]],[[]],N_ALL)().reshape(DIM,DIM)
+        EYE = jnp.matmul(mat_,EYE)
+        if ANCILLA_INIT == 'T':
+            mat_ = qujax.get_params_to_unitarytensor_func(['T'],[[i]],[[]],N_ALL)().reshape(DIM,DIM)
+            EYE = jnp.matmul(mat_,EYE)
 
 # Gateset generation
 _gset = config['environment']['gateset'].split(',')
@@ -30,11 +42,10 @@ CONNECTIVITY = load_connectivity(config)
 check_connectivity(CONNECTIVITY,N_QUBITS,N_ANCILLA)
 GATE_NAMES, GATES = generate_gateset(GATESET, CONNECTIVITY)
 
-ANCILLA_REDUDANCIES = ~ancilla_first_redundant(GATES, N_QUBITS, N_ANCILLA)
-
 # Utilities
 COMMUTATIONS = commutations(GATES)
 REDUNDANCIES = redundancies(GATES)
+ANCILLA_REDUDANCIES = ~ancilla_first_redundant(EYE, GATES, N_QUBITS, N_ANCILLA)
 LENGTH_GATES = jnp.int32(len(GATES))
 GATES_NUM = jnp.arange(LENGTH_GATES)
 DEPTH = config.getint('environment', 'max_depth')

@@ -5,7 +5,7 @@ import pgx.core as core
 from pgx._src.struct import dataclass
 from pgx._src.types import Array, PRNGKey
 
-from quantum_compilation.config import DIM, DIM_OBS, TWO_ANCILLA, LENGTH_GATES, DEPTH, M_TARGET_DEPTH, GATES, GATES_NUM, GATE_NAMES, FALSE, EYE_DIM_OBS, COMMUTATIONS, REDUNDANCIES, HAS_ANCILLA, ANCILLA_REDUDANCIES, FID_RENORM, FIDELITY, random_depth
+from quantum_compilation.config import DIM, DIM_OBS, TWO_ANCILLA, LENGTH_GATES, DEPTH, M_TARGET_DEPTH, GATES, GATES_NUM, GATE_NAMES, FALSE, EYE_DIM_OBS, EYE, COMMUTATIONS, REDUNDANCIES, HAS_ANCILLA, ANCILLA_REDUDANCIES, FID_RENORM, FIDELITY, random_depth
 from quantum_compilation.utils import is_redundant
 
 @dataclass
@@ -60,7 +60,7 @@ def _init(rng: PRNGKey, m_target_depth=M_TARGET_DEPTH) -> State:
     # we generate MAX_TARGET_DEPTH gates, that's cause static array is needed by jit
     gates = rand_cir(d, rng2)
     # building target circuit
-    v = jnp.eye(DIM, dtype=jnp.complex64)
+    v = EYE
     v = jax.lax.fori_loop(0, d, lambda i,v: jnp.matmul(GATES[gates[i]],v), v) 
     # This performs identity if N_ANCILLA == 0, else slice |0> in, |0> out on ancillaes
     v = jax.lax.slice(v, (0,0), (DIM,DIM), (TWO_ANCILLA,TWO_ANCILLA))
@@ -193,7 +193,7 @@ def random_circuit(d, rng: PRNGKey) -> Array:
 def random_circuit_ancilla(d, rng: PRNGKey) -> Array:
     def cond_fn(state):
         circuit, _ = state
-        u = jnp.eye(DIM, dtype=jnp.complex64)
+        u = EYE
         u = jax.lax.fori_loop(0, d, lambda i,u: jnp.matmul(GATES[circuit[i]],u), u)     
         u = jax.lax.slice(u, (0,0), (DIM,DIM), (TWO_ANCILLA,TWO_ANCILLA))
         # avoid trivial unitary
