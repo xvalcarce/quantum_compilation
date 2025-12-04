@@ -25,27 +25,29 @@ def generate_gateset(gateset, connectivity):
     gates = []
     gate_names = {}
     k = 0
-    controls = [constraints['control'] for index, constraints in connectivity.items()]
+    targets_per_qubit = {q: set(connectivity[q]["target"]) for q in connectivity}
+    controls_per_qubit = {q: set(connectivity[q]["control"]) for q in connectivity}
     for gate in gateset:
-        num_indices = gate.count('C') + 1
-        if num_indices == 1:
-            # Single-qubit operations
-            for index, constraints in connectivity.items():
-                if gate in constraints['target']:
-                    mat = qujax.get_params_to_unitarytensor_func([gate],[[index]],[[]],n_qubits)
-                    gates.append(mat().reshape(dim,dim).astype(jnp.complex64))
-                    gate_names[k] = f"{gate}_{index}"
-                    k+=1
+        n_qubits_gate = gate.count("C") + 1
+        if n_qubits_gate == 1:
+            # Single-qubit gates
+            for q in range(n_qubits):
+                if gate in targets_per_qubit[q]:
+                    mat = qujax.get_params_to_unitarytensor_func([gate], [[q]], [[]], n_qubits)
+                    gates.append(mat().reshape(dim, dim).astype(jnp.complex64))
+                    gate_names[k] = f"{gate}_{q}"
+                    k += 1
         else:
-            # Control operation
-            for target_index, constraints in connectivity.items():
-                if gate in constraints['target']:
-                    i_control = [i for i, c in enumerate(controls) if target_index in c]
-                    if len(i_control) >= num_indices-1:
-                        for ctrls in combinations(i_control,num_indices-1):
-                            mat = qujax.get_params_to_unitarytensor_func([gate],[list(ctrls)+[target_index]],[[]],n_qubits)
-                            gates.append(mat().reshape(dim,dim).astype(jnp.complex64))
-                            operation_name = f"{gate}_{ctrls}{target_index}"
-                            gate_names[k] = operation_name
-                            k+=1
+            # Multi-qubit gates
+            for target in range(n_qubits):
+                if gate in targets_per_qubit[target]:
+                    possible_controls = [q for q in range(n_qubits) if q != target and q in controls_per_qubit[target]]
+                    if len(possible_controls) >= n_qubits_gate - 1:
+                        # Generate all combinations of control qubits
+                        for ctrl_combo in combinations(possible_controls, n_qubits_gate - 1):
+                            qubits_ordered = list(ctrl_combo) + [target]
+                            mat = qujax.get_params_to_unitarytensor_func([gate], [qubits_ordered], [[]], n_qubits)
+                            gates.append(mat().reshape(dim, dim).astype(jnp.complex64))
+                            gate_names[k] = f"{gate}_{tuple(ctrl_combo)}{target}"
+                            k += 1
     return gate_names, jnp.stack(gates)
